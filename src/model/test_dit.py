@@ -65,10 +65,15 @@ def print_model_analysis(model_name: str = "DiT-S/2"):
     memory_bytes = sum(p.numel() * p.element_size() for p in model.parameters())
     print(f"\nApproximate Model Size in Memory: {memory_bytes / 1024 / 1024:.1f} MB")
 
+import argparse
 if __name__ == "__main__":
     # Analyze default model
-    model_name = "DiT-S/2"
-    print_model_analysis(model_name=model_name)
+    # add argument model_name to specify the model to analyze
+    parser = argparse.ArgumentParser(description='Analyze DiT model')
+    parser.add_argument('--model_name', type=str, default='DiT-S/2', help='DiT model name')
+    args = parser.parse_args()
+    model_name=args.model_name
+    print_model_analysis(model_name)
     
     # Test model with different input sizes
     model = DiT_models[model_name]()
