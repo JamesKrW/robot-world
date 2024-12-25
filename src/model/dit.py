@@ -328,5 +328,51 @@ def DiT_S_2():
         num_heads=16,
     )
 
+def DiT_XS_2():
+    return DiT(
+        patch_size=2,
+        hidden_size=512,    # Smaller hidden size
+        depth=12,           # Fewer layers
+        num_heads=8,        # Fewer attention heads
+    )
 
-DiT_models = {"DiT-S/2": DiT_S_2}
+def DiT_S_2():             # Current size
+    return DiT(
+        patch_size=2,
+        hidden_size=1024,
+        depth=16,
+        num_heads=16,
+    )
+
+def DiT_B_2():             # Bigger
+    return DiT(
+        patch_size=2,
+        hidden_size=1536,   # 1.5x hidden size
+        depth=24,           # 1.5x depth
+        num_heads=24,       # More heads
+    )
+
+def DiT_L_2():             # Large
+    return DiT(
+        patch_size=2,
+        hidden_size=2048,   # 2x hidden size
+        depth=32,           # 2x depth
+        num_heads=32,       # 2x heads
+    )
+
+def DiT_XL_2():            # Extra Large
+    return DiT(
+        patch_size=2,
+        hidden_size=2816,   # ~2.75x hidden size
+        depth=40,           # 2.5x depth
+        num_heads=44,       # More heads for larger hidden size
+    )
+
+# Modified DiT models dictionary
+DiT_models = {
+    "DiT-XS/2": DiT_XS_2,
+    "DiT-S/2": DiT_S_2,    # Original size
+    "DiT-B/2": DiT_B_2,
+    "DiT-L/2": DiT_L_2,
+    "DiT-XL/2": DiT_XL_2,
+}
