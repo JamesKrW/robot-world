@@ -14,7 +14,7 @@ from dataloader.vae_dataloader import create_droid_dataloader
 from dataclasses import dataclass
 from typing import Tuple
 from train_utils import ConfigMixin, setup_training_dir
-
+import shutil
 @dataclass
 class TrainingConfig(ConfigMixin):
     # Model configuration
@@ -118,7 +118,11 @@ class VAETrainer:
         
         # Setup output directory and save code/config
         self.output_dir = setup_training_dir(config)
-        
+        # save current .py code to self.output_dir / "code"
+        current_file_path = os.path.abspath(__file__)
+        script_name = os.path.basename(current_file_path)
+        destination_path = os.path.join(self.output_dir / "code", script_name)
+        shutil.copy(current_file_path, destination_path)
         # Initialize tensorboard writer if wandb is not used
         self.writer = None
         if not config.use_wandb and self.accelerator.is_main_process:
