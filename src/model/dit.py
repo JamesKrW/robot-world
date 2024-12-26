@@ -320,14 +320,6 @@ class DiT(nn.Module):
         return x
 
 
-def DiT_S_2():
-    return DiT(
-        patch_size=2,
-        hidden_size=1024,
-        depth=16,
-        num_heads=16,
-    )
-
 def DiT_XS_2():
     return DiT(
         patch_size=2,
