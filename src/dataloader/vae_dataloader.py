@@ -41,12 +41,17 @@ class DROIDImageTransform:
         self.transform = A.Compose([
             *aug_transforms,
             A.Resize(height=image_size[0], width=image_size[1]),
-            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            #A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
 
     def __call__(self, image: np.ndarray) -> torch.Tensor:
+        # Transform image
         transformed = self.transform(image=image)['image']
-        return torch.from_numpy(transformed).permute(2, 0, 1).float()
+        # Convert to tensor, scale to [0,1], then to [-1,1]
+        tensor = torch.from_numpy(transformed).permute(2, 0, 1).float()
+        tensor = tensor / 255.0  # to [0,1]
+        tensor = tensor * 2.0 - 1.0  # to [-1,1]
+        return tensor
 
 class DROIDStreamDataset(IterableDataset):
     def __init__(
@@ -57,14 +62,21 @@ class DROIDStreamDataset(IterableDataset):
         shuffle_buffer_size: int = 10000,
         train: bool = True,
         image_aug: bool = True,
-        dataset_name: str = "droid_100"
+        dataset_name: str = "droid",
+        validation_ratio: float = 0.1,
+        test_ratio: float = 0.1,
+        seed: int = 42
     ) -> None:
         super().__init__()
         self.data_dir = data_dir
-        self.split = split
+        self.split = split  # now can be "train", "val", or "test"
         self.shuffle_buffer_size = shuffle_buffer_size
         self.train = train
         self.dataset_name = dataset_name
+        self.validation_ratio = validation_ratio
+        self.test_ratio = test_ratio
+        self.seed = seed
+        
         # Initialize image transform
         self.image_transform = DROIDImageTransform(
             image_size=image_size,
@@ -76,19 +88,37 @@ class DROIDStreamDataset(IterableDataset):
         self._init_dataset()
 
     def _init_dataset(self) -> None:
-        """Initialize the tf.data pipeline with optimizations"""
-        # Load the dataset
-        self.dataset = tfds.load(
+        """Initialize the tf.data pipeline with custom splits"""
+        # Load the full dataset
+        full_dataset = tfds.load(
             self.dataset_name,
             data_dir=self.data_dir,
-            split=self.split
+            split="train"  # Original split is always "train"
         )
         
-        if self.train:
-            self.dataset = self.dataset.shuffle(
-                buffer_size=self.shuffle_buffer_size,
-                reshuffle_each_iteration=True
-            )
+        # Get total number of episodes
+        total_episodes = sum(1 for _ in full_dataset)
+        
+        # Calculate split boundaries
+        val_size = int(total_episodes * self.validation_ratio)
+        test_size = int(total_episodes * self.test_ratio)
+        train_size = total_episodes - val_size - test_size
+        
+        # Create deterministic splits using take/skip
+        if self.split == "train":
+            self.dataset = full_dataset.take(train_size)
+            if self.train:
+                self.dataset = self.dataset.shuffle(
+                    buffer_size=self.shuffle_buffer_size,
+                    seed=self.seed,
+                    reshuffle_each_iteration=True
+                )
+        elif self.split == "val":
+            self.dataset = full_dataset.skip(train_size).take(val_size)
+        elif self.split == "test":
+            self.dataset = full_dataset.skip(train_size + val_size).take(test_size)
+        else:
+            raise ValueError(f"Unknown split: {self.split}")
         
         # Apply prefetching
         self.dataset = self.dataset.prefetch(tf.data.AUTOTUNE)
@@ -98,8 +128,8 @@ class DROIDStreamDataset(IterableDataset):
         # Convert TensorFlow tensors to NumPy arrays
         concat_image = np.concatenate((
             step["observation"]["exterior_image_1_left"].numpy(),
-            step["observation"]["wrist_image_left"].numpy(),
-            step["observation"]["exterior_image_2_left"].numpy(),
+            # step["observation"]["wrist_image_left"].numpy(),
+            # step["observation"]["exterior_image_2_left"].numpy(),
         ), axis=1)
         
         return self.image_transform(concat_image)
@@ -135,36 +165,50 @@ def create_droid_dataloader(
     num_workers: int = 4,
     data_dir: str = "gs://gresearch/robotics",
     split: str = "train",
-    image_size: Tuple[int, int] = (256, 256),
+    image_size: Tuple[int, int] = (180, 320),
     shuffle_buffer_size: int = 10000,
     pin_memory: bool = True,
     prefetch_factor: int = 2,
     image_aug: bool = True,
+    dataset_name: str = "droid",
+    validation_ratio: float = 0.1,
+    test_ratio: float = 0.1,
+    seed: int = 42
 ) -> DataLoader:
     """
-    Creates an optimized DataLoader for the DROID dataset
+    Creates an optimized DataLoader for the DROID dataset with custom splits
     
     Args:
         batch_size: Batch size
         num_workers: Number of worker processes
         data_dir: Dataset directory
-        split: Dataset split
+        split: One of ["train", "val", "test"]
         image_size: Target image size
         shuffle_buffer_size: Size of shuffle buffer
         pin_memory: Whether to pin memory
         prefetch_factor: Number of batches to prefetch
         image_aug: Whether to use image augmentation
+        validation_ratio: Ratio of data to use for validation
+        test_ratio: Ratio of data to use for testing
+        seed: Random seed for reproducibility
     
     Returns:
         DataLoader: Optimized PyTorch DataLoader
     """
+    if split not in ["train", "val", "test"]:
+        raise ValueError(f"Split must be one of ['train', 'val', 'test'], got {split}")
+    
     dataset = DROIDStreamDataset(
         data_dir=data_dir,
         split=split,
         image_size=image_size,
         shuffle_buffer_size=shuffle_buffer_size,
         train=(split == "train"),
-        image_aug=image_aug,
+        image_aug=image_aug and (split == "train"),  # Only use augmentation for training
+        dataset_name=dataset_name,
+        validation_ratio=validation_ratio,
+        test_ratio=test_ratio,
+        seed=seed
     )
     
     return DataLoader(
@@ -176,33 +220,42 @@ def create_droid_dataloader(
         persistent_workers=True
     )
 
-# Test code
-def test_dataloader():
-    print("Creating dataloader...")
-    dataloader = create_droid_dataloader(
-        batch_size=2,
-        num_workers=1,
-        image_size=(256, 256),
-        shuffle_buffer_size=1000,
-        data_dir="/home/kangrui/projects/world_model/droid-debug",
-    )
-    
-    print("Attempting to load a batch...")
-    try:
-        batch = next(iter(dataloader))
-        print(f"Successfully loaded batch with shape: {batch.shape}")
-        
-        # Test batch properties
-        print(f"Batch min value: {batch.min()}")
-        print(f"Batch max value: {batch.max()}")
-        print(f"Batch mean value: {batch.mean()}")
-        # test if on gpu
-        print(f"Batch on GPU: {batch.is_cuda}")
-        
-        return True
-    except Exception as e:
-        print(f"Error loading batch: {e}")
-        return False
-
+# Example usage:
 if __name__ == "__main__":
-    test_dataloader()
+    def save_image(batch, split="debug", idx=0):
+        """Save image with proper color space and range handling"""
+        img = batch[idx].permute(1, 2, 0)
+        img = torch.clamp((img + 1) / 2, 0, 1)
+        img = (img * 255).byte().cpu().numpy()
+        import cv2
+        cv2.imwrite(f"{split}_image.jpg", img)
+        return img
+    
+    def test_all_splits():
+        data_dir = "/home/kangrui/projects/world_model/droid-debug"
+        batch_size = 2
+        
+        # Create dataloaders for all splits
+        splits = ["train", "val", "test"]
+        for split in splits:
+            print(f"\nTesting {split} split...")
+            dataloader = create_droid_dataloader(
+                batch_size=batch_size,
+                num_workers=1,
+                data_dir=data_dir,
+                split=split,
+                dataset_name="droid_100",
+                validation_ratio=0.1,
+                test_ratio=0.1,
+                seed=42
+            )
+            
+            try:
+                batch = next(iter(dataloader))
+                print(f"Successfully loaded batch with shape: {batch.shape}")
+               
+                # transform back
+                save_image(batch, split=split)
+            except Exception as e:
+                print(f"Error loading batch: {e}")
+    test_all_splits()

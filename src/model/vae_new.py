@@ -2,11 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from timm.models.layers import DropPath
-from rotary_embedding_torch import RotaryEmbedding, apply_rotary_emb
+from .rotary_embedding_torch import RotaryEmbedding, apply_rotary_emb
 from einops import rearrange
 from timm.models.vision_transformer import Mlp
 import functools
-from dit import PatchEmbed
+from .dit import PatchEmbed
 class DiagonalGaussianDistribution(object):
     def __init__(self, parameters, deterministic=False, dim=1):
         self.parameters = parameters
@@ -383,6 +383,8 @@ MODEL_CONFIGS = {
         dec_dim=1024,
         dec_depth=12,
         dec_heads=16,
+        input_height=180,
+        input_width=320,
     ),
     
     # Base configuration (similar to ViT-B/16)
