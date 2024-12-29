@@ -19,3 +19,5 @@ __pycache__/
 *.hdf5
 *.pt
 *.tar
+
+**egg-info**

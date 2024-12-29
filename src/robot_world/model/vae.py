@@ -2,11 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from timm.models.layers import DropPath
-from .rotary_embedding_torch import RotaryEmbedding, apply_rotary_emb
+from robot_world.model.rotary_embedding_torch import RotaryEmbedding, apply_rotary_emb
 from einops import rearrange
 from timm.models.vision_transformer import Mlp
 import functools
-from .dit import PatchEmbed
+from robot_world.model.dit import PatchEmbed
 class DiagonalGaussianDistribution(object):
     def __init__(self, parameters, deterministic=False, dim=1):
         self.parameters = parameters

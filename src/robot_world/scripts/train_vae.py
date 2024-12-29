@@ -9,11 +9,11 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 import os
 from typing import Optional, Dict, Any
-from model.vae_new import AutoencoderKL, DiagonalGaussianDistribution, create_vae_model
-from dataloader.vae_dataloader import create_droid_dataloader
+from robot_world.model.vae import AutoencoderKL, DiagonalGaussianDistribution, create_vae_model
+from robot_world.dataloader.vae_dataloader import create_droid_dataloader
 from dataclasses import dataclass
 from typing import Tuple
-from utils.train_utils import ConfigMixin, setup_training_dir
+from robot_world.utils.train_utils import ConfigMixin, setup_training_dir
 import shutil
 @dataclass
 class TrainingConfig(ConfigMixin):
