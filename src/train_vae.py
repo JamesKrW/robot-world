@@ -13,7 +13,7 @@ from model.vae_new import AutoencoderKL, DiagonalGaussianDistribution, create_va
 from dataloader.vae_dataloader import create_droid_dataloader
 from dataclasses import dataclass
 from typing import Tuple
-from train_utils import ConfigMixin, setup_training_dir
+from utils.train_utils import ConfigMixin, setup_training_dir
 import shutil
 @dataclass
 class TrainingConfig(ConfigMixin):

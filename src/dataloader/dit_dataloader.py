@@ -19,7 +19,6 @@ class DiffusionStreamDataset(IterableDataset):
         validation_ratio: float = 0.1,
         test_ratio: float = 0.1,
         seed: int = 42,
-        vae_encoder = None  # VAE encoder model for embedding images
     ) -> None:
         super().__init__()
         self.data_dir = data_dir
@@ -32,7 +31,6 @@ class DiffusionStreamDataset(IterableDataset):
         self.validation_ratio = validation_ratio
         self.test_ratio = test_ratio
         self.seed = seed
-        self.vae_encoder = vae_encoder
         self.current_context_frames = max_context_frames  # will be updated per batch
         
         # Initialize dataset
@@ -84,10 +82,6 @@ class DiffusionStreamDataset(IterableDataset):
         image = step["observation"]["exterior_image_1_left"].numpy()
         tensor = torch.from_numpy(image).permute(2, 0, 1).float()
         tensor = tensor / 255.0 * 2.0 - 1.0
-        
-        if self.vae_encoder is not None:
-            with torch.no_grad():
-                tensor = self.vae_encoder(tensor.unsqueeze(0)).squeeze(0)
         
         return tensor
 
@@ -165,7 +159,6 @@ def create_diffusion_dataloader(
     validation_ratio: float = 0.1,
     test_ratio: float = 0.1,
     seed: int = 42,
-    vae_encoder = None
 ) -> DataLoader:
     """
     Creates a DataLoader for training the diffusion model
@@ -187,7 +180,6 @@ def create_diffusion_dataloader(
         validation_ratio=validation_ratio,
         test_ratio=test_ratio,
         seed=seed,
-        vae_encoder=vae_encoder
     )
     
     return DataLoader(
