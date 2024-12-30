@@ -65,7 +65,8 @@ class DROIDStreamDataset(IterableDataset):
         dataset_name: str = "droid",
         validation_ratio: float = 0.1,
         test_ratio: float = 0.1,
-        seed: int = 42
+        seed: int = 42,
+        shuffle: bool = True
     ) -> None:
         super().__init__()
         self.data_dir = data_dir
@@ -76,7 +77,7 @@ class DROIDStreamDataset(IterableDataset):
         self.validation_ratio = validation_ratio
         self.test_ratio = test_ratio
         self.seed = seed
-        
+        self.shuffle=shuffle
         # Initialize image transform
         self.image_transform = DROIDImageTransform(
             image_size=image_size,
@@ -107,19 +108,18 @@ class DROIDStreamDataset(IterableDataset):
         # Create deterministic splits using take/skip
         if self.split == "train":
             self.dataset = full_dataset.take(train_size)
-            if self.train:
-                self.dataset = self.dataset.shuffle(
-                    buffer_size=self.shuffle_buffer_size,
-                    seed=self.seed,
-                    reshuffle_each_iteration=True
-                )
         elif self.split == "val":
             self.dataset = full_dataset.skip(train_size).take(val_size)
         elif self.split == "test":
             self.dataset = full_dataset.skip(train_size + val_size).take(test_size)
         else:
             raise ValueError(f"Unknown split: {self.split}")
-        
+        if self.shuffle:
+                self.dataset = self.dataset.shuffle(
+                    buffer_size=self.shuffle_buffer_size,
+                    seed=self.seed,
+                    reshuffle_each_iteration=True
+                )
         # Apply prefetching
         self.dataset = self.dataset.prefetch(tf.data.AUTOTUNE)
 
@@ -173,7 +173,8 @@ def create_droid_dataloader(
     dataset_name: str = "droid",
     validation_ratio: float = 0.1,
     test_ratio: float = 0.1,
-    seed: int = 42
+    seed: int = 42,
+    shuffle: bool = True
 ) -> DataLoader:
     """
     Creates an optimized DataLoader for the DROID dataset with custom splits
@@ -208,7 +209,8 @@ def create_droid_dataloader(
         dataset_name=dataset_name,
         validation_ratio=validation_ratio,
         test_ratio=test_ratio,
-        seed=seed
+        seed=seed,
+        shuffle=shuffle
     )
     
     return DataLoader(

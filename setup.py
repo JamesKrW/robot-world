@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="robot-world",  # package name with hyphen
+    name="robot_world",  # package name with hyphen
     version="0.1.0",
     description="A brief description of your robot world project",
     author="Your Name",

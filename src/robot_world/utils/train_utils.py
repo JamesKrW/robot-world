@@ -5,6 +5,7 @@ import argparse
 from typing import Type, TypeVar, Any
 import torch
 import numpy as np
+
 T = TypeVar('T')
 
 class ConfigMixin:
@@ -115,3 +116,37 @@ def setup_training_dir(config: Any) -> Path:
     return output_dir
 
 
+def get_scheduler(optimizer: torch.optim.Optimizer, config: ConfigMixin):
+    """Create learning rate scheduler"""
+    if config.scheduler_type == "cosine":
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=config.num_steps - config.warmup_steps,
+            eta_min=config.min_lr
+        )
+    elif config.scheduler_type == "linear":
+        scheduler = torch.optim.lr_scheduler.LinearLR(
+            optimizer,
+            start_factor=1.0,
+            end_factor=config.min_lr / config.learning_rate,
+            total_iters=config.num_steps - config.warmup_steps
+        )
+    else:
+        raise ValueError(f"Unknown scheduler type: {config.scheduler_type}")
+    
+    # Wrap with warmup
+    scheduler = torch.optim.lr_scheduler.SequentialLR(
+        optimizer,
+        schedulers=[
+            torch.optim.lr_scheduler.LinearLR(
+                optimizer,
+                start_factor=1e-8,
+                end_factor=1.0,
+                total_iters=config.warmup_steps
+            ),
+            scheduler
+        ],
+        milestones=[config.warmup_steps]
+    )
+    
+    return scheduler

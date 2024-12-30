@@ -19,6 +19,7 @@ class DiffusionStreamDataset(IterableDataset):
         validation_ratio: float = 0.1,
         test_ratio: float = 0.1,
         seed: int = 42,
+        shuffle: bool = True
     ) -> None:
         super().__init__()
         self.data_dir = data_dir
@@ -32,7 +33,7 @@ class DiffusionStreamDataset(IterableDataset):
         self.test_ratio = test_ratio
         self.seed = seed
         self.current_context_frames = max_context_frames  # will be updated per batch
-        
+        self.shuffle = shuffle
         # Initialize dataset
         self._init_dataset()
         
@@ -55,19 +56,19 @@ class DiffusionStreamDataset(IterableDataset):
         
         if self.split == "train":
             self.dataset = full_dataset.take(train_size)
-            if self.train:
+        elif self.split == "val":
+            self.dataset = full_dataset.skip(train_size).take(val_size)
+            
+        elif self.split == "test":
+            self.dataset = full_dataset.skip(train_size + val_size).take(test_size)
+        else:
+            raise ValueError(f"Unknown split: {self.split}")
+        if self.shuffle:
                 self.dataset = self.dataset.shuffle(
                     buffer_size=self.shuffle_buffer_size,
                     seed=self.seed,
                     reshuffle_each_iteration=True
                 )
-        elif self.split == "val":
-            self.dataset = full_dataset.skip(train_size).take(val_size)
-        elif self.split == "test":
-            self.dataset = full_dataset.skip(train_size + val_size).take(test_size)
-        else:
-            raise ValueError(f"Unknown split: {self.split}")
-        
         self.dataset = self.dataset.prefetch(tf.data.AUTOTUNE)
 
     def _get_action(self, step) -> np.ndarray:
@@ -159,6 +160,7 @@ def create_diffusion_dataloader(
     validation_ratio: float = 0.1,
     test_ratio: float = 0.1,
     seed: int = 42,
+    shuffle: bool = True
 ) -> DataLoader:
     """
     Creates a DataLoader for training the diffusion model
@@ -180,6 +182,7 @@ def create_diffusion_dataloader(
         validation_ratio=validation_ratio,
         test_ratio=test_ratio,
         seed=seed,
+        shuffle=shuffle
     )
     
     return DataLoader(

@@ -13,11 +13,12 @@ from robot_world.model.vae import AutoencoderKL, DiagonalGaussianDistribution, c
 from robot_world.dataloader.vae_dataloader import create_droid_dataloader
 from dataclasses import dataclass
 from typing import Tuple
-from robot_world.utils.train_utils import ConfigMixin, setup_training_dir
+from robot_world.utils.train_utils import ConfigMixin, setup_training_dir, get_scheduler
 import shutil
+import torchvision.utils as vutils
 @dataclass
 class TrainingConfig(ConfigMixin):
-    # Model configuration
+    # Previous config parameters remain the same
     model_type: str = "vit-l-20-shallow"
     
     # Data configuration
@@ -34,13 +35,9 @@ class TrainingConfig(ConfigMixin):
     kld_weight: float = 0.00025
     gradient_accumulation_steps: int = 1
     mixed_precision: str = "fp16"
-    
-    # Scheduler configuration
-    scheduler_type: str = "cosine"  # "cosine" or "linear"
+    scheduler_type: str = "cosine"
     warmup_steps: int = 5000
     min_lr: float = 1e-6
-    
-    # Validation configuration
     validation_ratio: float = 0.1
     validation_freq: int = 1000
     
@@ -54,41 +51,19 @@ class TrainingConfig(ConfigMixin):
     
     # Optional resume path
     resume_from: Optional[str] = None
+    
+    # New visualization parameters
+    eval_batch_size: int = 32  # Number of images to show in visualization grid
+    num_viz_rows: int = 4     # Number of rows in visualization grid
 
-def get_scheduler(optimizer: torch.optim.Optimizer, config: TrainingConfig):
-    """Create learning rate scheduler"""
-    if config.scheduler_type == "cosine":
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer,
-            T_max=config.num_steps - config.warmup_steps,
-            eta_min=config.min_lr
-        )
-    elif config.scheduler_type == "linear":
-        scheduler = torch.optim.lr_scheduler.LinearLR(
-            optimizer,
-            start_factor=1.0,
-            end_factor=config.min_lr / config.learning_rate,
-            total_iters=config.num_steps - config.warmup_steps
-        )
-    else:
-        raise ValueError(f"Unknown scheduler type: {config.scheduler_type}")
+def make_grid_image(images: torch.Tensor, nrow: int = 4) -> torch.Tensor:
+    """Convert a batch of images to a grid"""
+    # Convert from [-1, 1] to [0, 1] range
+    images = (images + 1) / 2
     
-    # Wrap with warmup
-    scheduler = torch.optim.lr_scheduler.SequentialLR(
-        optimizer,
-        schedulers=[
-            torch.optim.lr_scheduler.LinearLR(
-                optimizer,
-                start_factor=1e-8,
-                end_factor=1.0,
-                total_iters=config.warmup_steps
-            ),
-            scheduler
-        ],
-        milestones=[config.warmup_steps]
-    )
-    
-    return scheduler
+    # Create grid (images already in correct channel-first format)
+    grid = vutils.make_grid(images, nrow=nrow, padding=2, normalize=False, pad_value=1)
+    return grid
 
 def vae_loss(
     recon_x: torch.Tensor, 
@@ -109,26 +84,12 @@ def vae_loss(
         'kl_loss': kl_loss
     }
 
+
 class VAETrainer:
-    def __init__(
-        self,
-        config: TrainingConfig,
-    ):
+    def __init__(self, config: TrainingConfig):
         self.config = config
         
-        # Setup output directory and save code/config
-        self.output_dir = setup_training_dir(config)
-        # save current .py code to self.output_dir / "code"
-        current_file_path = os.path.abspath(__file__)
-        script_name = os.path.basename(current_file_path)
-        destination_path = os.path.join(self.output_dir / "code", script_name)
-        shutil.copy(current_file_path, destination_path)
-        # Initialize tensorboard writer if wandb is not used
-        self.writer = None
-        if not config.use_wandb and self.accelerator.is_main_process:
-            self.writer = SummaryWriter(self.output_dir / "tensorboard")
-        
-        # Initialize Accelerator
+        # Initialize Accelerator first
         ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
         self.accelerator = Accelerator(
             gradient_accumulation_steps=config.gradient_accumulation_steps,
@@ -137,7 +98,32 @@ class VAETrainer:
             log_with="wandb" if config.use_wandb else None
         )
         
-        # Create model and other components
+        # Setup output directory and save code
+        self.output_dir = setup_training_dir(config)
+        current_file_path = os.path.abspath(__file__)
+        script_name = os.path.basename(current_file_path)
+        destination_path = os.path.join(self.output_dir / "code", script_name)
+        shutil.copy(current_file_path, destination_path)
+        
+        # Create visualization directory
+        if self.accelerator.is_main_process:
+            self.viz_dir = self.output_dir / "visualizations"
+            self.viz_dir.mkdir(exist_ok=True)
+        
+        # Initialize other components as before
+        self.writer = None
+        if not config.use_wandb and self.accelerator.is_main_process:
+            self.writer = SummaryWriter(self.output_dir / "tensorboard")
+        
+        ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+        self.accelerator = Accelerator(
+            gradient_accumulation_steps=config.gradient_accumulation_steps,
+            mixed_precision=config.mixed_precision,
+            kwargs_handlers=[ddp_kwargs],
+            log_with="wandb" if config.use_wandb else None
+        )
+        
+        # Create model and optimizers
         self.model = create_vae_model(config.model_type)
         self.optimizer = AdamW(
             self.model.parameters(),
@@ -164,41 +150,64 @@ class VAETrainer:
             image_aug=False,
             data_dir=config.data_dir,
             dataset_name=config.dataset_name,
-            validation_ratio=config.validation_ratio
+            validation_ratio=config.validation_ratio,
+            shuffle=False
         )
         
-        # Prepare for distributed training
+        # Create visualization dataloader with specific batch size
+        self.viz_dataloader = create_droid_dataloader(
+            batch_size=config.eval_batch_size,
+            num_workers=config.num_workers,
+            split='val',
+            image_size=config.image_size,
+            image_aug=False,
+            data_dir=config.data_dir,
+            dataset_name=config.dataset_name,
+            validation_ratio=config.validation_ratio,
+            shuffle=True
+        )
+        
+        # Prepare all components
         (
             self.model,
             self.optimizer,
             self.scheduler,
             self.train_dataloader,
             self.val_dataloader,
+            self.viz_dataloader,
         ) = self.accelerator.prepare(
             self.model,
             self.optimizer,
             self.scheduler,
             self.train_dataloader,
-            self.val_dataloader
+            self.val_dataloader,
+            self.viz_dataloader,
         )
         
-        # Initialize wandb if used
         if config.use_wandb and self.accelerator.is_main_process:
             self.accelerator.init_trackers(
                 project_name=config.project_name,
                 config=config.__dict__,
                 init_kwargs={"wandb": {"name": config.exp_name}}
             )
-    
-    def log_metrics(self, metrics: Dict[str, float], step: int):
-        """Log metrics to either WandB or TensorBoard"""
+
+    def log_metrics(self, metrics: Dict[str, float], step: int, images: Optional[Dict[str, torch.Tensor]] = None):
+        """Log metrics and images to either WandB or TensorBoard"""
         if self.accelerator.is_main_process:
             if self.config.use_wandb:
-                self.accelerator.log(metrics, step=step)
+                log_dict = metrics.copy()
+                if images:
+                    log_dict.update({
+                        k: wandb.Image(v.cpu().numpy().transpose(1, 2, 0))
+                        for k, v in images.items()
+                    })
+                self.accelerator.log(log_dict, step=step)
             elif self.writer is not None:
                 for key, value in metrics.items():
                     self.writer.add_scalar(key, value, step)
-    
+                if images:
+                    for key, img in images.items():
+                        self.writer.add_image(key, img, step)
     def save_checkpoint(self, step: int, is_best: bool = False):
         """Save model checkpoint"""
         if self.accelerator.is_main_process:
@@ -230,10 +239,48 @@ class VAETrainer:
         self.scheduler.load_state_dict(checkpoint['scheduler'])
         
         return checkpoint['step']
-    
+                
     @torch.no_grad()
-    def validate(self) -> Dict[str, float]:
-        """Run validation loop"""
+    def generate_visualizations(self, step: int) -> Dict[str, torch.Tensor]:
+        """Generate and save visualization grids"""
+        self.model.eval()
+        
+        # Get a batch of validation images
+        viz_batch = next(iter(self.viz_dataloader))
+        
+        # Generate reconstructions
+        recon, _ = self.model(viz_batch)
+        
+        # Create image grids
+        input_grid = make_grid_image(
+            viz_batch[:self.config.eval_batch_size],
+            nrow=self.config.num_viz_rows
+        )
+        recon_grid = make_grid_image(
+            recon[:self.config.eval_batch_size],
+            nrow=self.config.num_viz_rows
+        )
+        
+        # Save images if main process
+        if self.accelerator.is_main_process:
+            vutils.save_image(
+                input_grid,
+                self.viz_dir / f'input_grid_step_{step}.png'
+            )
+            vutils.save_image(
+                recon_grid,
+                self.viz_dir / f'recon_grid_step_{step}.png'
+            )
+        
+        self.model.train()
+        return {
+            'input_grid': input_grid,
+            'reconstruction_grid': recon_grid
+        }
+
+    @torch.no_grad()
+    def validate(self, step: int) -> Dict[str, float]:
+        """Run validation loop with visualizations"""
         self.model.eval()
         val_losses = []
         
@@ -242,13 +289,16 @@ class VAETrainer:
             losses = vae_loss(recon, batch, posterior, self.config.kld_weight)
             val_losses.append({k: v.item() for k, v in losses.items()})
         
+        # Generate visualizations
+        viz_images = self.generate_visualizations(step)
+        
         avg_losses = {}
         for k in val_losses[0].keys():
             avg_losses[f'val_{k}'] = sum(x[k] for x in val_losses) / len(val_losses)
         
         self.model.train()
-        return avg_losses
-    
+        return avg_losses, viz_images
+
     def train(self, resume_from: Optional[str] = None):
         """Main training loop"""
         start_step = 0
@@ -306,9 +356,9 @@ class VAETrainer:
                     }
                     log_dict['learning_rate'] = current_lr
                     
-                    # Run validation if needed
+                    # Run validation and generate visualizations if needed
                     if step % self.config.validation_freq == 0:
-                        val_metrics = self.validate()
+                        val_metrics, viz_images = self.validate(step)
                         log_dict.update(val_metrics)
                         
                         # Check if best model
@@ -316,12 +366,15 @@ class VAETrainer:
                         is_best = val_loss < best_val_loss
                         if is_best:
                             best_val_loss = val_loss
+                        
+                        # Log metrics and images
+                        self.log_metrics(log_dict, step, viz_images)
+                    else:
+                        # Log metrics only
+                        self.log_metrics(log_dict, step)
                     
                     # Update progress bar
                     progress_bar.set_postfix(**log_dict)
-                    
-                    # Log metrics using the appropriate logger
-                    self.log_metrics(log_dict, step)
             
             # Save checkpoint
             if step % self.config.save_every == 0:
@@ -336,13 +389,13 @@ class VAETrainer:
         if self.accelerator.is_main_process:
             self.save_checkpoint(self.config.num_steps, is_best=False)
             
-            # Close tensorboard writer if it exists
             if self.writer is not None:
                 self.writer.close()
             
-            # End wandb if it's being used
             if self.config.use_wandb:
                 self.accelerator.end_training()
+
+# The rest of the code (main function, etc.) remains the same
 
 def main():
     # Get config from CLI arguments

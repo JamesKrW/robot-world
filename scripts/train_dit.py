@@ -8,7 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 import os
 from dataclasses import dataclass
-from robot_world.utils.train_utils import ConfigMixin, setup_training_dir
+from robot_world.utils.train_utils import ConfigMixin, setup_training_dir, get_scheduler
 from robot_world.dataloader.vae_dataloader import create_droid_dataloader
 import shutil
 from robot_world.utils.video_diffusion import VideoDiffusion
@@ -62,40 +62,6 @@ class TrainingConfig(ConfigMixin):
     
     # Optional resume path
     resume_from: Optional[str] = None
-
-def get_scheduler(optimizer: torch.optim.Optimizer, config: TrainingConfig):
-    """Create learning rate scheduler"""
-    if config.scheduler_type == "cosine":
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer,
-            T_max=config.num_steps - config.warmup_steps,
-            eta_min=config.min_lr
-        )
-    elif config.scheduler_type == "linear":
-        scheduler = torch.optim.lr_scheduler.LinearLR(
-            optimizer,
-            start_factor=1.0,
-            end_factor=config.min_lr / config.learning_rate,
-            total_iters=config.num_steps - config.warmup_steps
-        )
-    else:
-        raise ValueError(f"Unknown scheduler type: {config.scheduler_type}")
-    
-    scheduler = torch.optim.lr_scheduler.SequentialLR(
-        optimizer,
-        schedulers=[
-            torch.optim.lr_scheduler.LinearLR(
-                optimizer,
-                start_factor=1e-8,
-                end_factor=1.0,
-                total_iters=config.warmup_steps
-            ),
-            scheduler
-        ],
-        milestones=[config.warmup_steps]
-    )
-    
-    return scheduler
 
 class DiTTrainer:
     def __init__(self, config: TrainingConfig):
