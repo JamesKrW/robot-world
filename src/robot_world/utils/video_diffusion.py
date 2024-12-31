@@ -17,6 +17,7 @@ class VideoDiffusion:
         max_noise_level: int = 1000,
         n_action_bins: int = 256,
         stabilization_level: int = 15,
+        scaling_factor = 0.07843137255,
         device: str = "cuda"
     ):
         if isinstance(device, str):
@@ -25,6 +26,7 @@ class VideoDiffusion:
             self.device = device
         
         self.stabilization_level = stabilization_level
+        self.scaling_factor = scaling_factor
         self.max_noise_level = max_noise_level
         
         # Initialize models
@@ -112,7 +114,7 @@ class VideoDiffusion:
         all_latents = torch.cat([prev_latents, x_t], dim=1)  # [B, T+1, C, H, W]
         
         # Timesteps - similar to inference
-        t_context = torch.full((B, T), self.stabilization_level, device=self.device)
+        t_context = torch.full((B, T), self.stabilization_level-1, device=self.device)
         t_expanded = torch.cat([t_context, t.unsqueeze(1)], dim=1)  # [B, T+1]
         
         # Expand action condition for all frames including target
@@ -141,7 +143,6 @@ class VideoDiffusion:
         eta: float = 0.0,
         noise_abs_max = 20,
         scaling_factor = 0.07843137255,
-        stabilization_level = 15
     ) -> torch.Tensor:
         # Move inputs to device first
         prev_frames = prev_frames.to(self.device)
@@ -172,7 +173,7 @@ class VideoDiffusion:
         alphas_cumprod = rearrange(self.alphas_cumprod, "T -> T 1 1 1")
         for noise_idx in reversed(range(1, ddim_noise_steps + 1)):
             # set up noise values
-            t_ctx = torch.full((B, T), stabilization_level - 1, dtype=torch.long, device=self.device)
+            t_ctx = torch.full((B, T), self.stabilization_level - 1, dtype=torch.long, device=self.device)
             t = torch.full((B, 1), noise_range[noise_idx], dtype=torch.long, device=self.device)
             t_next = torch.full((B, 1), noise_range[noise_idx - 1], dtype=torch.long, device=self.device)
             t_next = torch.where(t_next < 0, t, t_next)
