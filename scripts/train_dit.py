@@ -8,31 +8,31 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 import os
 from dataclasses import dataclass
-from robot_world.utils.train_utils import ConfigMixin, setup_training_dir, get_scheduler
-from robot_world.dataloader.vae_dataloader import create_droid_dataloader
+from robot_world.utils.train_utils import ConfigMixin, setup_training_dir, get_scheduler,seed_everything
+from robot_world.dataloader.dit_dataloader import create_diffusion_dataloader
 import shutil
 from robot_world.utils.video_diffusion import VideoDiffusion
 
 @dataclass
 class TrainingConfig(ConfigMixin):
     # Model configuration
-    dit_model_type: str = "DiT-S/2"
+    dit_model_type: str = "DiT-XS/2"
     vae_model_type: str = "vit-l-20-shallow"
     vae_checkpoint_path: Optional[str] = None
     freeze_vae: bool = True
     
     # Data configuration
-    batch_size: int = 32
+    batch_size: int = 32 
     num_workers: int = 4
-    image_size: Tuple[int, int] = (180, 320)
-    data_dir: str = "/path/to/droid/data"
+    image_size: Tuple[int, int] = (360, 640)
+    data_dir: str = "/home/kangrui/projects/world_model/droid-debug"
     dataset_name: str = "droid_100"
     
     # Training configuration
-    num_steps: int = 100000
+    num_steps: int = 10000
     learning_rate: float = 1e-4
     weight_decay: float = 0.01
-    gradient_accumulation_steps: int = 1
+    gradient_accumulation_steps: int = 2
     mixed_precision: str = "fp16"
     
     # Diffusion configuration
@@ -40,7 +40,7 @@ class TrainingConfig(ConfigMixin):
     
     # Action configuration
     n_action_bins: int = 256
-    action_bins_path: str = "action_bins.json"
+    action_bins_path: Optional[str] = None
     
     # Scheduler configuration
     scheduler_type: str = "cosine"
@@ -50,7 +50,9 @@ class TrainingConfig(ConfigMixin):
     # Validation configuration
     validation_freq: int = 1000
     validation_ratio: float = 0.1
-    eval_batch_size: int = 8
+    # Visualization parameters
+    viz_batch_size: int = 32  # Number of images to show in visualization grid
+    num_viz_rows: int = 8    # Number of rows in visualization grid
     
     # Logging configuration
     project_name: str = "dit-training"
@@ -62,10 +64,18 @@ class TrainingConfig(ConfigMixin):
     
     # Optional resume path
     resume_from: Optional[str] = None
+    
+    use_gradient_checkpointing: bool = True
+    enable_flash_attention: bool = False  # Only works if flash-attn is installed
+    gradient_checkpointing_ratio: float = 0.5  # Controls how many layers to checkpoint
+    
+    seed: int = 42
 
 class DiTTrainer:
     def __init__(self, config: TrainingConfig):
         self.config = config
+        # Set seed
+        seed_everything(config.seed)
         
         # Setup output directory and save code/config
         self.output_dir = setup_training_dir(config)
@@ -97,13 +107,11 @@ class DiTTrainer:
             device=self.accelerator.device
         )
         
+    
         # Load VAE checkpoint if provided
         if config.vae_checkpoint_path:
             self.model.load_vae(config.vae_checkpoint_path)
         
-        # Load action bins
-        if config.action_bins_path:
-            self.model.load_action_bins(config.action_bins_path)
         
         # Freeze VAE if specified
         if config.freeze_vae:
@@ -124,7 +132,7 @@ class DiTTrainer:
         self.scheduler = get_scheduler(self.optimizer, config)
         
         # Create dataloaders
-        self.train_dataloader = create_droid_dataloader(
+        self.train_dataloader = create_diffusion_dataloader(
             batch_size=config.batch_size,
             num_workers=config.num_workers,
             split='train',
@@ -133,7 +141,7 @@ class DiTTrainer:
             dataset_name=config.dataset_name,
         )
         
-        self.val_dataloader = create_droid_dataloader(
+        self.val_dataloader = create_diffusion_dataloader(
             batch_size=config.batch_size,
             num_workers=config.num_workers,
             split='val',
@@ -141,8 +149,29 @@ class DiTTrainer:
             data_dir=config.data_dir,
             dataset_name=config.dataset_name,
             validation_ratio=config.validation_ratio,
-            image_aug=False
+            image_aug=False,
+            shuffle=False
         )
+        self.viz_dataloader= create_diffusion_dataloader(
+            batch_size=config.viz_batch_size,
+            num_workers=config.num_workers,
+            split='val',
+            image_size=config.image_size,
+            data_dir=config.data_dir,
+            dataset_name=config.dataset_name,
+            validation_ratio=config.validation_ratio,
+            image_aug=False,
+            shuffle=True
+        )
+        if config.action_bins_path:
+            self.model.load_action_bins(config.action_bins_path)
+        else:
+            min_vals, max_vals, bin_edges = self.model.action_binner.collect_statistics(self.train_dataloader)
+            self.model.action_binner.min_vals = min_vals
+            self.model.action_binner.max_vals = max_vals
+            self.model.action_binner.bin_edges = bin_edges
+            self.model.action_binner.save_bins(os.path.join(self.output_dir, f"bins_{self.model.action_binner.strategy}.json"))
+        
         
         # Prepare for distributed training
         (
@@ -178,13 +207,34 @@ class DiTTrainer:
                 for key, value in metrics.items():
                     self.writer.add_scalar(key, value, step)
     
+    def load_checkpoint(self, checkpoint_path: str):
+        checkpoint = torch.load(checkpoint_path, map_location='cpu')
+        
+        # Load VAE if it exists in checkpoint
+        if 'vae_model' in checkpoint:
+            unwrapped_vae = self.accelerator.unwrap_model(self.model.vae)
+            unwrapped_vae.load_state_dict(checkpoint['vae_model'])
+        
+        # Load DiT
+        if 'dit_model' in checkpoint:
+            unwrapped_dit = self.accelerator.unwrap_model(self.model.dit)
+            unwrapped_dit.load_state_dict(checkpoint['dit_model'])
+        
+        # Load optimizer and scheduler states
+        if 'optimizer' in checkpoint:
+            self.optimizer.load_state_dict(checkpoint['optimizer'])
+        if 'scheduler' in checkpoint:
+            self.scheduler.load_state_dict(checkpoint['scheduler'])
+        
+        return checkpoint.get('step', 0)
+
     def save_checkpoint(self, step: int, is_best: bool = False):
-        """Save model checkpoint"""
         if self.accelerator.is_main_process:
             checkpoint_dir = self.output_dir / "checkpoints"
             checkpoint_dir.mkdir(exist_ok=True)
             checkpoint_path = checkpoint_dir / f'checkpoint_{step}.pt'
             
+            # Get unwrapped models
             unwrapped_dit = self.accelerator.unwrap_model(self.model.dit)
             unwrapped_vae = self.accelerator.unwrap_model(self.model.vae)
             
@@ -196,7 +246,7 @@ class DiTTrainer:
                 'config': self.config.__dict__
             }
             
-            # Save VAE state if it's being trained
+            # Save VAE state only if it's being trained
             if not self.config.freeze_vae:
                 state['vae_model'] = unwrapped_vae.state_dict()
             
@@ -206,24 +256,6 @@ class DiTTrainer:
                 best_path = checkpoint_dir / 'checkpoint_best.pt'
                 self.accelerator.save(state, best_path)
     
-    def load_checkpoint(self, checkpoint_path: str):
-        """Load model checkpoint"""
-        checkpoint = torch.load(checkpoint_path, map_location='cpu')
-        
-        # Load models
-        unwrapped_dit = self.accelerator.unwrap_model(self.model.dit)
-        unwrapped_dit.load_state_dict(checkpoint['dit_model'])
-        
-        if not self.config.freeze_vae and 'vae_model' in checkpoint:
-            unwrapped_vae = self.accelerator.unwrap_model(self.model.vae)
-            unwrapped_vae.load_state_dict(checkpoint['vae_model'])
-        
-        # Load optimizer and scheduler states
-        self.optimizer.load_state_dict(checkpoint['optimizer'])
-        self.scheduler.load_state_dict(checkpoint['scheduler'])
-        
-        return checkpoint['step']
-    
     @torch.no_grad()
     def validate(self) -> Dict[str, float]:
         """Run validation loop and save visualization samples"""
@@ -232,15 +264,18 @@ class DiTTrainer:
             self.model.vae.eval()
             
         val_losses = []
-        
+        print(self.optimizer.state_dict()['state'])
         # Get current step
-        current_step = self.optimizer.state_dict()['state'][0]['step']
+        # current_step = self.optimizer.state_dict()['state'][0]['step']
+        try:
+            current_step = self.optimizer.state_dict()['state'][0]['step']
+        except KeyError:
+            # If no steps have been taken yet, use 0
+            current_step = 0
+        # visualize samples
         
-        # Always do visualization for a fixed batch for consistency
-        if not hasattr(self, 'viz_batch'):
-            # Cache a validation batch for consistent visualization
-            self.viz_batch = next(iter(self.val_dataloader))
-            self.viz_batch = {k: v[:self.config.eval_batch_size] for k, v in self.viz_batch.items()}
+        self.viz_batch = next(iter(self.viz_dataloader))
+        #self.viz_batch = {k: v[:self.config.viz_batch_size] for k, v in self.viz_batch.items()}
             
         # Generate visualization samples
         if self.accelerator.is_main_process:
@@ -248,20 +283,20 @@ class DiTTrainer:
             image_dir.mkdir(exist_ok=True)
             
             # Generate samples with different sampling steps
-            for num_steps in [10, 50]:  # Try both fast and slow sampling
-                sample_path = image_dir / f'val_samples_step{current_step}_ddim{num_steps}.png'
+            for ddim_noise_steps in [10, 50]:  # Try both fast and slow sampling
+                sample_path = image_dir / f'val_samples_step{current_step}_ddim{ddim_noise_steps}.png'
                 self.model.visualize(
                     self.viz_batch['prev_frames'],
                     self.viz_batch['delta_action'],
-                    num_samples=self.config.eval_batch_size,
+                    num_samples=self.config.viz_batch_size,
                     save_path=sample_path,
-                    num_steps=num_steps
+                    ddim_noise_steps=ddim_noise_steps
                 )
             
             # Also visualize the ground truth for reference
             from torchvision.utils import save_image, make_grid
-            ground_truth = self.viz_batch['current_frame'][:self.config.eval_batch_size]
-            grid = make_grid(ground_truth, nrow=int(self.config.eval_batch_size ** 0.5), padding=2, normalize=False)
+            ground_truth = self.viz_batch['current_frame'][:self.config.viz_batch_size]
+            grid = make_grid(ground_truth, nrow=int(self.config.num_viz_rows), padding=2, normalize=False)
             save_image(grid, image_dir / f'val_ground_truth_step{current_step}.png')
         
         # Compute validation loss on the full validation set

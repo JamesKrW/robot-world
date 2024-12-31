@@ -26,22 +26,24 @@ def main(args):
 
     # load DiT checkpoint
     model = DiT_models["DiT-S/2"]()
-    print(f"loading Oasis-500M from oasis-ckpt={os.path.abspath(args.oasis_ckpt)}...")
-    if args.oasis_ckpt.endswith(".pt"):
-        ckpt = torch.load(args.oasis_ckpt, weights_only=True)
-        model.load_state_dict(ckpt, strict=False)
-    elif args.oasis_ckpt.endswith(".safetensors"):
-        load_model(model, args.oasis_ckpt)
+    if args.oasis_ckpt is not None:
+        print(f"loading Oasis-500M from oasis-ckpt={os.path.abspath(args.oasis_ckpt)}...")
+        if args.oasis_ckpt.endswith(".pt"):
+            ckpt = torch.load(args.oasis_ckpt, weights_only=True)
+            model.load_state_dict(ckpt, strict=False)
+        elif args.oasis_ckpt.endswith(".safetensors"):
+            load_model(model, args.oasis_ckpt)
     model = model.to(device).eval()
 
     # load VAE checkpoint
     vae = VAE_models["vit-l-20-shallow-encoder"]()
-    print(f"loading ViT-VAE-L/20 from vae-ckpt={os.path.abspath(args.vae_ckpt)}...")
-    if args.vae_ckpt.endswith(".pt"):
-        vae_ckpt = torch.load(args.vae_ckpt, weights_only=True)
-        vae.load_state_dict(vae_ckpt)
-    elif args.vae_ckpt.endswith(".safetensors"):
-        load_model(vae, args.vae_ckpt)
+    if args.vae_ckpt is not None:
+        print(f"loading ViT-VAE-L/20 from vae-ckpt={os.path.abspath(args.vae_ckpt)}...")
+        if args.vae_ckpt.endswith(".pt"):
+            vae_ckpt = torch.load(args.vae_ckpt, weights_only=True)
+            vae.load_state_dict(vae_ckpt)
+        elif args.vae_ckpt.endswith(".safetensors"):
+            load_model(vae, args.vae_ckpt)
     vae = vae.to(device).eval()
 
     # sampling params
@@ -141,13 +143,13 @@ if __name__ == "__main__":
         "--oasis-ckpt",
         type=str,
         help="Path to Oasis DiT checkpoint.",
-        default="oasis500m.safetensors",
+        default=None,
     )
     parse.add_argument(
         "--vae-ckpt",
         type=str,
         help="Path to Oasis ViT-VAE checkpoint.",
-        default="vit-l-20.safetensors",
+        default=None,
     )
     parse.add_argument(
         "--num-frames",
@@ -159,13 +161,13 @@ if __name__ == "__main__":
         "--prompt-path",
         type=str,
         help="Path to image or video to condition generation on.",
-        default="sample_data/sample_image_0.png",
+        default="/home/kangrui/projects/world_model/robot-world/sample_data/sample_image_0.png",
     )
     parse.add_argument(
         "--actions-path",
         type=str,
         help="File to load actions from (.actions.pt or .one_hot_actions.pt)",
-        default="sample_data/sample_actions_0.one_hot_actions.pt",
+        default="/home/kangrui/projects/world_model/robot-world/sample_data/sample_actions_0.one_hot_actions.pt",
     )
     parse.add_argument(
         "--video-offset",

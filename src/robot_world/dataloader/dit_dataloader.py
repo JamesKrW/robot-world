@@ -5,6 +5,7 @@ import tensorflow_datasets as tfds
 import numpy as np
 from typing import Tuple, Dict, Any, Optional
 import random
+from .vae_dataloader import DROIDImageTransform
 tf.config.set_visible_devices([], "GPU")
 class DiffusionStreamDataset(IterableDataset):
     def __init__(
@@ -19,7 +20,9 @@ class DiffusionStreamDataset(IterableDataset):
         validation_ratio: float = 0.1,
         test_ratio: float = 0.1,
         seed: int = 42,
-        shuffle: bool = True
+        shuffle: bool = True,
+        image_size: Tuple[int, int] = (256, 256),
+        image_aug: bool = True
     ) -> None:
         super().__init__()
         self.data_dir = data_dir
@@ -34,6 +37,11 @@ class DiffusionStreamDataset(IterableDataset):
         self.seed = seed
         self.current_context_frames = max_context_frames  # will be updated per batch
         self.shuffle = shuffle
+        self.image_transform = DROIDImageTransform(
+            image_size=image_size,
+            train=train,
+            image_aug=image_aug
+        )
         # Initialize dataset
         self._init_dataset()
         
@@ -81,10 +89,8 @@ class DiffusionStreamDataset(IterableDataset):
     def _get_frame(self, step) -> torch.Tensor:
         """Extract and process frame from step"""
         image = step["observation"]["exterior_image_1_left"].numpy()
-        tensor = torch.from_numpy(image).permute(2, 0, 1).float()
-        tensor = tensor / 255.0 * 2.0 - 1.0
+        return self.image_transform(image)
         
-        return tensor
 
     def _process_sequence(self, steps: list, frame_idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Process a sequence of steps to get frames and delta action"""
@@ -138,7 +144,11 @@ class DiffusionStreamDataset(IterableDataset):
                 for i in range(self.current_context_frames, len(steps)):
                     try:
                         prev_frames, current_frame, delta_action = self._process_sequence(steps, i)
-                        yield prev_frames, current_frame, delta_action
+                        yield {
+                        'prev_frames': prev_frames,
+                        'current_frame': current_frame,
+                        'delta_action': delta_action
+                    }
                     except Exception as e:
                         print(f"Error processing sequence: {e}")
                         continue
@@ -151,7 +161,7 @@ def create_diffusion_dataloader(
     num_workers: int = 4,
     data_dir: str = "gs://gresearch/robotics",
     split: str = "train",
-    max_context_frames: int = 8,
+    max_context_frames: int = 16,
     min_context_frames: int = 1,
     shuffle_buffer_size: int = 10000,
     pin_memory: bool = True,
@@ -160,7 +170,9 @@ def create_diffusion_dataloader(
     validation_ratio: float = 0.1,
     test_ratio: float = 0.1,
     seed: int = 42,
-    shuffle: bool = True
+    shuffle: bool = True,
+    image_size: Tuple[int, int] = (256, 256),
+    image_aug: bool = True
 ) -> DataLoader:
     """
     Creates a DataLoader for training the diffusion model
@@ -182,7 +194,9 @@ def create_diffusion_dataloader(
         validation_ratio=validation_ratio,
         test_ratio=test_ratio,
         seed=seed,
-        shuffle=shuffle
+        shuffle=shuffle,
+        image_size=image_size,
+        image_aug=image_aug
     )
     
     return DataLoader(

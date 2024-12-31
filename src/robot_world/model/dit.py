@@ -200,15 +200,15 @@ class DiT(nn.Module):
 
     def __init__(
         self,
-        input_h=18,
-        input_w=32,
+        input_h=9,
+        input_w=16,
         patch_size=2,
         in_channels=16,
         hidden_size=1024,
         depth=12,
         num_heads=16,
         mlp_ratio=4.0,
-        external_cond_dim=25,
+        external_cond_dim=7*256,
         max_frames=32,
     ):
         super().__init__()
@@ -321,44 +321,59 @@ class DiT(nn.Module):
         return x
 
 
-def DiT_XS_2():
+def DiT_XS_2(input_h=18, input_w=32, **kwargs):
     return DiT(
         patch_size=2,
         hidden_size=512,    # Smaller hidden size
         depth=12,           # Fewer layers
         num_heads=8,        # Fewer attention heads
+        input_h=input_h, 
+        input_w=input_w,
+        **kwargs
     )
 
-def DiT_S_2():             # Current size
+def DiT_S_2(input_h=18, input_w=32, **kwargs):             # Current size
     return DiT(
         patch_size=2,
         hidden_size=1024,
         depth=16,
         num_heads=16,
+        input_h=input_h, 
+        input_w=input_w,
+        **kwargs
     )
 
-def DiT_B_2():             # Bigger
+def DiT_B_2(input_h=18, input_w=32, **kwargs):             # Bigger
     return DiT(
         patch_size=2,
         hidden_size=1536,   # 1.5x hidden size
         depth=24,           # 1.5x depth
         num_heads=24,       # More heads
+        input_h=input_h, 
+        input_w=input_w,
+        **kwargs
     )
 
-def DiT_L_2():             # Large
+def DiT_L_2(input_h=18, input_w=32, **kwargs):             # Large
     return DiT(
         patch_size=2,
         hidden_size=2048,   # 2x hidden size
         depth=32,           # 2x depth
         num_heads=32,       # 2x heads
+        input_h=input_h,
+        input_w=input_w,
+        **kwargs
     )
 
-def DiT_XL_2():            # Extra Large
+def DiT_XL_2(input_h=18, input_w=32, **kwargs):            # Extra Large
     return DiT(
         patch_size=2,
         hidden_size=2816,   # ~2.75x hidden size
         depth=40,           # 2.5x depth
         num_heads=44,       # More heads for larger hidden size
+        input_h=input_h,
+        input_w=input_w,
+        **kwargs
     )
 
 # Modified DiT models dictionary
@@ -443,25 +458,26 @@ if __name__ == "__main__":
     # Analyze default model
     # add argument model_name to specify the model to analyze
     parser = argparse.ArgumentParser(description='Analyze DiT model')
+    batch_size = 2
+    time_frames = 8
+    channels = 16
+    height = 16
+    width = 32
     parser.add_argument('--model_name', type=str, default='DiT-S/2', help='DiT model name')
     args = parser.parse_args()
     model_name=args.model_name
     print_model_analysis(model_name)
     
     # Test model with different input sizes
-    model = DiT_models[model_name]()
+    model = DiT_models[model_name](input_h=height, input_w=width)
     
     print("\nTesting model with sample input:")
-    batch_size = 2
-    time_frames = 8
-    channels = 16
-    height = 18
-    width = 32
+    
     
     # Create sample inputs
     x = torch.randn(batch_size, time_frames, channels, height, width)
     t = torch.randint(0, 1000, (batch_size, time_frames))
-    external_cond = torch.randn(batch_size, time_frames, 25)  # Example external condition
+    external_cond = torch.randn(batch_size, time_frames, 7*256)  # Example external condition
     
     # Run forward pass
     with torch.no_grad():
@@ -480,6 +496,7 @@ if __name__ == "__main__":
         
         with torch.no_grad():
             output = model(x, t, external_cond)
-        
+        print(x.shape)
+        print(output.shape)
         peak_memory = torch.cuda.max_memory_allocated() / 1024 / 1024
         print(f"\nPeak GPU memory usage: {peak_memory:.1f} MB")

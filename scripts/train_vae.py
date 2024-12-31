@@ -13,13 +13,13 @@ from robot_world.model.vae import AutoencoderKL, DiagonalGaussianDistribution, c
 from robot_world.dataloader.vae_dataloader import create_droid_dataloader
 from dataclasses import dataclass
 from typing import Tuple
-from robot_world.utils.train_utils import ConfigMixin, setup_training_dir, get_scheduler
+from robot_world.utils.train_utils import ConfigMixin, setup_training_dir, get_scheduler,seed_everything
 import shutil
-import torchvision.utils as vutils
-@dataclass
+from torchvision.utils import make_grid,save_image
 class TrainingConfig(ConfigMixin):
     # Previous config parameters remain the same
     model_type: str = "vit-l-20-shallow"
+    seed: int = 42
     
     # Data configuration
     batch_size: int = 32
@@ -56,15 +56,6 @@ class TrainingConfig(ConfigMixin):
     eval_batch_size: int = 32  # Number of images to show in visualization grid
     num_viz_rows: int = 4     # Number of rows in visualization grid
 
-def make_grid_image(images: torch.Tensor, nrow: int = 4) -> torch.Tensor:
-    """Convert a batch of images to a grid"""
-    # Convert from [-1, 1] to [0, 1] range
-    images = (images + 1) / 2
-    
-    # Create grid (images already in correct channel-first format)
-    grid = vutils.make_grid(images, nrow=nrow, padding=2, normalize=False, pad_value=1)
-    return grid
-
 def vae_loss(
     recon_x: torch.Tensor, 
     x: torch.Tensor, 
@@ -88,7 +79,7 @@ def vae_loss(
 class VAETrainer:
     def __init__(self, config: TrainingConfig):
         self.config = config
-        
+        seed_everything(config.seed)
         # Initialize Accelerator first
         ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
         self.accelerator = Accelerator(
@@ -251,23 +242,22 @@ class VAETrainer:
         # Generate reconstructions
         recon, _ = self.model(viz_batch)
         
+        recon=(recon+1)/2
+        viz_batch=(viz_batch+1)/2
+        recon=torch.clamp(recon, 0, 1)
+        viz_batch=torch.clamp(viz_batch, 0, 1)
+        
         # Create image grids
-        input_grid = make_grid_image(
-            viz_batch[:self.config.eval_batch_size],
-            nrow=self.config.num_viz_rows
-        )
-        recon_grid = make_grid_image(
-            recon[:self.config.eval_batch_size],
-            nrow=self.config.num_viz_rows
-        )
+        input_grid = make_grid(viz_batch[:self.config.num_viz_rows], nrow=int(self.config.num_viz_rows ** 0.5), padding=2, normalize=False)
+        recon_grid = make_grid(recon[:self.config.num_viz_rows], nrow=int(self.config.num_viz_rows ** 0.5), padding=2, normalize=False)
         
         # Save images if main process
         if self.accelerator.is_main_process:
-            vutils.save_image(
+            save_image(
                 input_grid,
                 self.viz_dir / f'input_grid_step_{step}.png'
             )
-            vutils.save_image(
+            save_image(
                 recon_grid,
                 self.viz_dir / f'recon_grid_step_{step}.png'
             )

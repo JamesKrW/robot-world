@@ -389,8 +389,6 @@ MODEL_CONFIGS = {
         dec_dim=1024,
         dec_depth=12,
         dec_heads=16,
-        input_height=180,
-        input_width=320,
     ),
     
     # Base configuration (similar to ViT-B/16)
