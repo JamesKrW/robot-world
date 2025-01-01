@@ -1,11 +1,11 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="robot_world",  # package name with hyphen
+    name="robot_world",  
     version="0.1.0",
-    description="A brief description of your robot world project",
-    author="Your Name",
-    author_email="your.email@example.com",
+    description="robot world project",
+    author="Jameskrw",
+    author_email="kangruiwang.cs@gmail.com",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     python_requires=">=3.7",
