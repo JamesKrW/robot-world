@@ -9,4 +9,15 @@ setup(
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     python_requires=">=3.7",
+    install_requires=[
+        "torch",
+        "torchvision",
+        "einops",
+        "diffusers",
+        "timm",
+        "av"
+    ],
+    dependency_links=[
+        "https://download.pytorch.org/whl/cu121"  # CUDA 12.1 specific PyTorch wheels
+    ]
 )
