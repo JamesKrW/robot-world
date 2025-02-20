@@ -2,12 +2,10 @@ from setuptools import setup, find_packages
 
 setup(
     name="robot_world",  
-    version="0.1.0",
     description="robot world project",
     author="Jameskrw",
     author_email="kangruiwang.cs@gmail.com",
-    packages=find_packages(where="src"),
-    package_dir={"": "src"},
+    packages=["robot_world", "octo"],  
     python_requires=">=3.7",
     install_requires=[
         "torch",
