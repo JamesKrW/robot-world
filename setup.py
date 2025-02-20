@@ -13,7 +13,12 @@ setup(
         "einops",
         "diffusers",
         "timm",
-        "av"
+        "av",
+        'accelerate'
+        "wandb"
+        "tensorboard",
+        "tensorflow",
+        "tensorflow-datasets"
     ],
     dependency_links=[
         "https://download.pytorch.org/whl/cu121"  # CUDA 12.1 specific PyTorch wheels

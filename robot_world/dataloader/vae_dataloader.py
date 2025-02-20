@@ -30,12 +30,13 @@ class DROIDImageTransform:
                     p=0.5
                 ),
                 A.RandomResizedCrop(
-                    height=image_size[0],
-                    width=image_size[1],
+                    size=image_size,  # Pass as tuple
                     scale=(0.9, 1.0),
                     ratio=(0.9, 1.1),
-                    p=0.5
-                )
+                    p=0.5,
+                    interpolation=1,
+                    mask_interpolation=0
+                ),
             ])
 
         self.transform = A.Compose([

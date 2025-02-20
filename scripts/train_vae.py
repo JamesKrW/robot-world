@@ -16,6 +16,8 @@ from typing import Tuple
 from robot_world.utils.train_utils import ConfigMixin, setup_training_dir, get_scheduler,seed_everything
 import shutil
 from torchvision.utils import make_grid,save_image
+
+@dataclass
 class TrainingConfig(ConfigMixin):
     # Previous config parameters remain the same
     model_type: str = "vit-l-20-shallow"
@@ -24,8 +26,8 @@ class TrainingConfig(ConfigMixin):
     # Data configuration
     batch_size: int = 32
     num_workers: int = 4
-    image_size: Tuple[int, int] = (180, 320)
-    data_dir: str = "/home/kangrui/projects/world_model/droid-debug"
+    image_size: Tuple[int, int] = (360, 640)
+    data_dir: str = "/home/kangrui/projects/world_model/dataset"
     dataset_name: str = "droid_100"
     
     # Training configuration

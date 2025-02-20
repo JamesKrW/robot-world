@@ -5,9 +5,10 @@ import argparse
 from typing import Type, TypeVar, Any
 import torch
 import numpy as np
-
+from dataclasses import dataclass
 T = TypeVar('T')
 
+@dataclass
 class ConfigMixin:
     """Mixin class for configuration dataclasses providing common functionality"""
     
