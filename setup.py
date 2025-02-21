@@ -9,18 +9,20 @@ setup(
     python_requires=">=3.7",
     install_requires=[
         "torch",
-        "torchvision",
+        "torchvision", 
         "einops",
         "diffusers",
         "timm",
         "av",
-        'accelerate'
-        "wandb"
+        'accelerate',
+        "wandb",
         "tensorboard",
         "tensorflow",
-        "tensorflow-datasets"
+        "tensorflow-datasets",
+        "tensorflow-graphics",
+        "dlimp @ git+https://github.com/kvablack/dlimp.git"  # Added this line
     ],
     dependency_links=[
-        "https://download.pytorch.org/whl/cu121"  # CUDA 12.1 specific PyTorch wheels
+        "https://download.pytorch.org/whl/cu121"
     ]
 )

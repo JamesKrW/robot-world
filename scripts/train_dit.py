@@ -9,7 +9,7 @@ from tqdm.auto import tqdm
 import os
 from dataclasses import dataclass
 from robot_world.utils.train_utils import ConfigMixin, setup_training_dir, get_scheduler,seed_everything
-from robot_world.dataloader.dit_dataloader import create_diffusion_dataloader
+from robot_world.dataset.dit_dataloader import create_diffusion_dataloader
 import shutil
 from robot_world.utils.video_diffusion import VideoDiffusion
 
