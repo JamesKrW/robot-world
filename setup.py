@@ -6,7 +6,7 @@ setup(
     author="Jameskrw",
     author_email="kangruiwang.cs@gmail.com",
     packages=["robot_world", "octo"],  
-    python_requires=">=3.7",
+    python_requires=">=3.10",
     install_requires=[
         "torch",
         "torchvision", 
