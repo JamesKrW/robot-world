@@ -9,7 +9,7 @@ from typing import Any, Dict
 import tensorflow as tf
 import torch
 import tensorflow_graphics.geometry.transformation as tfg
-
+import numpy as np
 def filter_success(trajectory: dict[str, any]):
     # only keep trajectories that have "success" in the file path
     return tf.strings.regex_full_match(
@@ -85,15 +85,19 @@ class TorchRLDSDataset(torch.utils.data.IterableDataset):
             yield sample
 
     def __len__(self):
-        lengths = np.array(
-            [
-                stats["num_transitions"]
-                for stats in self._rlds_dataset.dataset_statistics
-            ]
-        )
+        stats = self._rlds_dataset.dataset_statistics
+        
+        
+        lengths = np.array([
+            stats_item
+            for stats_item in stats["num_transitions"]
+        ])
+        
         if hasattr(self._rlds_dataset, "sample_weights"):
-            lengths *= np.array(self._rlds_dataset.sample_weights)
+            lengths = np.array(self._rlds_dataset.sample_weights)*lengths
+        
         total_len = lengths.sum()
+        
         if self._is_train:
             return int(0.95 * total_len)
         else:
