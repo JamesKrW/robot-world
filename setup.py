@@ -20,7 +20,7 @@ setup(
         "tensorflow",
         "tensorflow-datasets",
         "tensorflow-graphics",
-        "dlimp @ git+https://github.com/kvablack/dlimp.git"  # Added this line
+        "dlimp @ git+https://github.com/kvablack/dlimp.git"  
     ],
     dependency_links=[
         "https://download.pytorch.org/whl/cu121"
