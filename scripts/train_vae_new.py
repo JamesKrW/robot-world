@@ -26,7 +26,7 @@ class VAETrainingConfig(ConfigMixin):
     eval_batch_size: int = 64
     num_workers: int = 4
     image_size: Tuple[int, int] = (360, 640)
-    data_dir: str = "/home/kangrui/projects/world_model/dataset"
+    data_dir: str = "../dataset"
     dataset_name: str = "droid_100"
     
     # Training configuration
@@ -55,7 +55,7 @@ class VAETrainingConfig(ConfigMixin):
     exp_name: str = "default"
     log_every: int = 100
     save_every: int = 1000
-    eval_every: int = 10
+    eval_every: int = 1000
     num_viz_samples: int = 32
     output_dir: str = "outputs"
     use_wandb: bool = True
