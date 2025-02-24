@@ -15,7 +15,6 @@ Thanks to our implementation using OCTO's data loading interface, the framework 
 
 ## Installation
 
-1. Clone the repository:
 ```bash
 git clone git@github.com:JamesKrW/robot-world.git
 conda create -n robot-world python=3.11 -y
