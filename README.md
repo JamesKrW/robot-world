@@ -4,10 +4,7 @@ A world model training framework for robotics.
 
 ## Overview
 
-Robot-World predicts future frame conditioned on previous frames and actions, the architeture of which is based on Open OASIS, where:
-
-- A VAE encodes video frames into a latent space representation
-- DiT predicts future frames based on the encoded representations
+Robot-World predicts future frame conditioned on previous frames and actions, the architeture of which is based on Open OASIS.
 
 ### Key Features
 
