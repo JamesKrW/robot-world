@@ -4,7 +4,7 @@ A world model training framework for robotics.
 
 ## Overview
 
-Robot-World predicts future frame conditioned on previous frames and actions, the architeture of which is based on [Open OASIS](https://github.com/etched-ai/open-oasis), where:
+Robot-World predicts future frame conditioned on previous frames and actions, the architeture of which is based on Open OASIS, where:
 
 - A VAE encodes video frames into a latent space representation
 - DiT predicts future frames based on the encoded representations
@@ -18,10 +18,10 @@ Robot-World predicts future frame conditioned on previous frames and actions, th
 
 ## Supported Datasets
 
-- [DROID](https://droid-dataset.github.io/): Primary dataset for current development
-- [OXE](https://robotics-transformer-x.github.io/) (WIP)
+- DROID: Primary dataset for current development
+- Multiple datasets in OXE (WIP)
 
-Thanks to our implementation using [OCTO](https://octo-models.github.io/)'s data loading interface, the framework can easily mix different RLDS-formatted datasets during training.
+Thanks to our implementation using OCTO's data loading interface, the framework can easily mix different RLDS-formatted datasets during training.
 
 ## Installation
 
