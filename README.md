@@ -38,7 +38,7 @@ pip install -e .
 
 ### Preparation
 
-1. Download the DROID dataset following instructions: [DROID Dataset](https://droid-dataset.github.io/)
+1. Download the [DROID](https://droid-dataset.github.io/) dataset following instructions.
 2. Set your dataset dir.
 3. Set your wandb account.
 
@@ -48,7 +48,7 @@ pip install -e .
 python robot-world/scripts/train_vae.py
 ```
 
-- You can start with `droid_100`. The full DROID dataset costs ~30 minutes for initialization on an AMD Ryzen 9 7950X machine.
+- Might start with `droid_100`. The full DROID dataset costs ~30 minutes for initialization on an AMD Ryzen 9 7950X machine.
 - You can adjust threading parameters for faster data loading:
   ```python
   parallel_calls: int = 16
@@ -61,7 +61,7 @@ python robot-world/scripts/train_vae.py
 ```bash
 python robot-world/scripts/train_dit.py
 ```
-- You can either freeze VAE weights or jointly train both.
+- Could either freeze VAE weights or jointly train both.
 
 ## To-dos
 - DiT training pipeline adaptation to OCTO data loading
