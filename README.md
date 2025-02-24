@@ -45,7 +45,7 @@ python robot-world/scripts/train_vae.py
   traj_read_threads: int = 16
   ```
 
-### DIT TRAINING (WIP)
+### DIT Training (WIP)
 
 ```bash
 python robot-world/scripts/train_dit.py
@@ -63,5 +63,5 @@ python robot-world/scripts/train_dit.py
 This project builds upon several excellent works:
 - [Open OASIS](https://github.com/etched-ai/open-oasis)
 - [DROID](https://droid-dataset.github.io/)
-- [OCTO](https://octo-models.github.io/)
+- [OCTO](https://github.com/octo-models/octo)
 - [OXE](https://robotics-transformer-x.github.io/)
