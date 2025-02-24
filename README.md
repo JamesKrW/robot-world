@@ -47,10 +47,8 @@ pip install -e .
 python robot-world/scripts/train_vae.py
 ```
 
-#### Configuration Tips:
-- Start with `droid_100` subset for initial testing
-- For full DROID dataset, it costs ~30 minutes for initialization on an AMD Ryzen 9 7950X machine
-- Adjust threading parameters for faster data loading:
+- You can start with `droid_100`. The full DROID dataset costs ~30 minutes for initialization on an AMD Ryzen 9 7950X machine.
+- You can adjust threading parameters for faster data loading:
   ```python
   parallel_calls: int = 16
   traj_transform_threads: int = 16
@@ -62,7 +60,7 @@ python robot-world/scripts/train_vae.py
 ```bash
 python robot-world/scripts/train_dit.py
 ```
-You can either freeze VAE weights or jointly train both.
+- You can either freeze VAE weights or jointly train both.
 
 ## To-dos
 - DiT training pipeline adaptation to OCTO data loading
