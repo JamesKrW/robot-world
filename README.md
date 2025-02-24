@@ -6,13 +6,6 @@ A world model training framework for robotics.
 
 Robot-World predicts future frame conditioned on previous frames and actions, the architeture of which is based on Open OASIS.
 
-### Key Features
-
-- Flexible dataset integration through OCTO-based data loading
-- Support for multiple robotics datasets in RLDS format
-- Modular training pipeline for VAE and DiT components
-- Easy extension to new datasets and architectures
-
 ## Supported Datasets
 
 - DROID: Primary dataset for current development
