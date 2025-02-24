@@ -36,10 +36,11 @@ pip install -e .
 
 ## Usage
 
-### Dataset Preparation
+### Preparation
 
-1. Download the DROID dataset following instructions at [DROID Dataset](https://droid-dataset.github.io/)
-2. Configure your dataset directory in the training scripts
+1. Download the DROID dataset following instructions: [DROID Dataset](https://droid-dataset.github.io/)
+2. Set your dataset dir.
+3. Set your wandb account.
 
 ### VAE Training
 
