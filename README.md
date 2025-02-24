@@ -74,6 +74,6 @@ You can either freeze VAE weights or jointly train both.
 
 This project builds upon several excellent works:
 - [Open OASIS](https://github.com/etched-ai/open-oasis)
-- [DROID Dataset](https://droid-dataset.github.io/)
+- [DROID](https://droid-dataset.github.io/)
 - [OCTO](https://octo-models.github.io/)
 - [OXE](https://robotics-transformer-x.github.io/)
