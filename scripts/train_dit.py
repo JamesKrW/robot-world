@@ -25,7 +25,7 @@ class TrainingConfig(ConfigMixin):
     batch_size: int = 32 
     num_workers: int = 4
     image_size: Tuple[int, int] = (360, 640)
-    data_dir: str = "/home/kangrui/projects/world_model/droid-debug"
+    data_dir: str = "../datasets"
     dataset_name: str = "droid_100"
     
     # Training configuration
