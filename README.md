@@ -4,7 +4,8 @@ A world model training framework for robotics.
 
 ## Overview
 
-Robot-World predicts future frame conditioned on previous frames and actions, the architeture of which is based on Open OASIS.
+Robot-World predicts future frame conditioned on previous frames and actions.
+Currently we use the model from Open OASIS.
 
 ## Supported Datasets
 
