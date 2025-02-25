@@ -10,7 +10,7 @@ Currently we use the model from Open OASIS.
 ## Supported Datasets
 
 - DROID: Primary dataset for current development
-- Multiple datasets in OXE (WIP)
+- Multiple datasets in OXE
 
 Thanks to our implementation using OCTO's data loading interface, the framework can easily mix different RLDS-formatted datasets during training.
 
