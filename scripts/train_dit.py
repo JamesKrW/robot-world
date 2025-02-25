@@ -83,7 +83,7 @@ class DiTTrainingConfig(ConfigMixin):
     
     seed: int = 42
 
-class DualCameraDiTTrainer:
+class DiTTrainer:
     def __init__(self, config: DiTTrainingConfig):
         self.config = config
         # Set seed
@@ -492,7 +492,7 @@ def main():
     config = DiTTrainingConfig.from_args()
     
     # Initialize trainer
-    trainer = DualCameraDiTTrainer(config)
+    trainer = DiTTrainer(config)
 
     # Start/resume training
     trainer.train(resume_from=config.resume_from)
