@@ -9,12 +9,13 @@ from tqdm.auto import tqdm
 import os
 from dataclasses import dataclass
 from robot_world.utils.train_utils import ConfigMixin, setup_training_dir, get_scheduler,seed_everything
-from robot_world.data.dit_dataloader import create_diffusion_dataloader
+from robot_world.data.droid_dataloader import create_droid_dataloader
 import shutil
+import sys
 from robot_world.utils.video_diffusion import VideoDiffusion
-
+import tensorflow as tf 
 @dataclass
-class TrainingConfig(ConfigMixin):
+class DiTTrainingConfig(ConfigMixin):
     # Model configuration
     dit_model_type: str = "DiT-XS/2"
     vae_model_type: str = "vit-l-20-shallow"
@@ -22,12 +23,23 @@ class TrainingConfig(ConfigMixin):
     freeze_vae: bool = True
     
     # Data configuration
-    batch_size: int = 32 
+    train_batch_size: int = 32
+    eval_batch_size: int = 4
     num_workers: int = 4
     image_size: Tuple[int, int] = (360, 640)
     data_dir: str = "../datasets"
     dataset_name: str = "droid_100"
     
+    # Dataloader configuration
+    shuffle_buffer_size: int = 10000
+    window_size: int = 10
+    future_action_window_size: int = 0
+    subsample_length: int = 100
+    skip_unlabeled: bool = True
+    parallel_calls: int = 2
+    traj_transform_threads: int = 2
+    traj_read_threads: int = 2
+
     # Training configuration
     num_steps: int = 10000
     learning_rate: float = 1e-4
@@ -72,7 +84,7 @@ class TrainingConfig(ConfigMixin):
     seed: int = 42
 
 class DiTTrainer:
-    def __init__(self, config: TrainingConfig):
+    def __init__(self, config: DiTTrainingConfig):
         self.config = config
         # Set seed
         seed_everything(config.seed)
@@ -132,36 +144,60 @@ class DiTTrainer:
         self.scheduler = get_scheduler(self.optimizer, config)
         
         # Create dataloaders
-        self.train_dataloader = create_diffusion_dataloader(
-            batch_size=config.batch_size,
-            num_workers=config.num_workers,
-            split='train',
-            image_size=config.image_size,
+        self.train_dataloader = create_droid_dataloader(
+            train=True,
             data_dir=config.data_dir,
-            dataset_name=config.dataset_name,
-        )
-        
-        self.val_dataloader = create_diffusion_dataloader(
-            batch_size=config.batch_size,
+            batch_size=config.train_batch_size,
             num_workers=config.num_workers,
-            split='val',
-            image_size=config.image_size,
-            data_dir=config.data_dir,
-            dataset_name=config.dataset_name,
-            validation_ratio=config.validation_ratio,
-            image_aug=False,
-            shuffle=False
+            shuffle_buffer_size=config.shuffle_buffer_size,
+            window_size=config.window_size,
+            future_action_window_size=config.future_action_window_size,
+            subsample_length=config.subsample_length,
+            skip_unlabeled=config.skip_unlabeled,
+            resize_primary=config.image_size,
+            resize_secondary=config.image_size,
+            parallel_calls=config.parallel_calls,
+            traj_transform_threads=config.traj_transform_threads,
+            traj_read_threads=config.traj_read_threads,
+            dataset_names=[config.dataset_name],
+            collect_fn=self.custom_collate_fn
         )
-        self.viz_dataloader= create_diffusion_dataloader(
+
+        self.val_dataloader = create_droid_dataloader(
+            train=False,
+            data_dir=config.data_dir,
+            batch_size=config.eval_batch_size,
+            num_workers=config.num_workers,
+            shuffle_buffer_size=config.shuffle_buffer_size,
+            window_size=config.window_size,
+            future_action_window_size=config.future_action_window_size,
+            subsample_length=config.subsample_length,
+            skip_unlabeled=config.skip_unlabeled,
+            resize_primary=config.image_size,
+            resize_secondary=config.image_size,
+            parallel_calls=config.parallel_calls,
+            traj_transform_threads=config.traj_transform_threads,
+            traj_read_threads=config.traj_read_threads,
+            dataset_names=[config.dataset_name],
+            collect_fn=self.custom_collate_fn
+        )
+        self.viz_dataloader= create_droid_dataloader(
+            train=False,
+            data_dir=config.data_dir,
             batch_size=config.viz_batch_size,
             num_workers=config.num_workers,
-            split='val',
-            image_size=config.image_size,
-            data_dir=config.data_dir,
-            dataset_name=config.dataset_name,
-            validation_ratio=config.validation_ratio,
-            image_aug=False,
-            shuffle=True
+            shuffle_buffer_size=config.shuffle_buffer_size,
+            window_size=config.window_size,
+            future_action_window_size=config.future_action_window_size,
+            subsample_length=config.subsample_length,
+            skip_unlabeled=config.skip_unlabeled,
+            resize_primary=config.image_size,
+            resize_secondary=config.image_size,
+            parallel_calls=config.parallel_calls,
+            traj_transform_threads=config.traj_transform_threads,
+            traj_read_threads=config.traj_read_threads,
+            dataset_names=[config.dataset_name],
+            collect_fn=self.custom_collate_fn
         )
         if config.action_bins_path:
             self.model.load_action_bins(config.action_bins_path)
@@ -197,7 +233,39 @@ class DiTTrainer:
                 config=config.__dict__,
                 init_kwargs={"wandb": {"name": config.exp_name}}
             )
-    
+    def custom_collate_fn(self, samples):
+        window_size = samples[0]['obs']['camera/image/varied_camera_1_left_image'].shape[0]
+        # total_steps = samples[0]['actions'].shape[0]
+        # future_window_size = total_steps - window_size
+
+        prev_frames_list = []
+        current_frame_list = []
+        delta_actions_list = []
+        for sample in samples:
+            cam1 = torch.from_numpy(sample['obs']['camera/image/varied_camera_1_left_image']).float()  # [window_size, H, W, C]
+            cam1 = cam1.permute(0, 3, 1, 2)
+            prev_frames_cam1 = cam1[:window_size-1]
+            current_frame_cam1 = cam1[window_size-1:window_size] 
+
+            prev_frames_list.append(prev_frames_cam1)
+            current_frame_list.append(current_frame_cam1)
+            action = torch.cat([torch.from_numpy(sample['actions'][:, :6]), torch.from_numpy(sample['actions'][:, -1]).unsqueeze(-1)], dim=1)
+            delta = action[window_size-2] - action[window_size-3]
+            delta_actions_list.append(delta)
+        
+        prev_frames = torch.stack(prev_frames_list, dim=0) 
+        current_frame = torch.stack(current_frame_list, dim=0).squeeze(1)
+        delta_action = torch.stack(delta_actions_list, dim=0)
+
+
+        collated_batch = {
+            "prev_frames": prev_frames, 
+            "current_frame": current_frame, 
+            "delta_action": delta_action  
+        }
+        
+        return collated_batch
+
     def log_metrics(self, metrics: Dict[str, float], step: int):
         """Log metrics to either WandB or TensorBoard"""
         if self.accelerator.is_main_process:
@@ -273,7 +341,6 @@ class DiTTrainer:
             # If no steps have been taken yet, use 0
             current_step = 0
         # visualize samples
-        
         self.viz_batch = next(iter(self.viz_dataloader))
         #self.viz_batch = {k: v[:self.config.viz_batch_size] for k, v in self.viz_batch.items()}
             
@@ -300,15 +367,22 @@ class DiTTrainer:
             save_image(grid, image_dir / f'val_ground_truth_step{current_step}.png')
         
         # Compute validation loss on the full validation set
-        for batch in self.val_dataloader:
-            t = torch.randint(
-                0, self.config.max_noise_level, (batch['current_frame'].shape[0],),
-                device=self.accelerator.device
-            )
-            
-            pred_dict = self.model.process_batch(batch, t)
-            loss = self.model.compute_loss(pred_dict)
-            val_losses.append(loss.item())
+        print("now start testing on validation set")
+        val_dataloader_len = len(self.val_dataloader)
+        val_iterator = iter(self.val_dataloader)
+        for i in tqdm(range(val_dataloader_len), leave=False):
+            try:
+                batch = next(val_iterator)
+                t = torch.randint(
+                    0, self.config.max_noise_level, (batch['current_frame'].shape[0],),
+                    device=self.accelerator.device
+                )
+                pred_dict = self.model.process_batch(batch, t)
+                loss = self.model.compute_loss(pred_dict)
+                val_losses.append(loss.item())
+            except StopIteration:
+                print(f"validate ending at step {i}/{val_dataloader_len}")
+                break
         
         avg_loss = sum(val_losses) / len(val_losses)
         
@@ -342,7 +416,6 @@ class DiTTrainer:
             except StopIteration:
                 train_iter = iter(self.train_dataloader)
                 batch = next(train_iter)
-            
             # Forward pass
             with self.accelerator.accumulate(self.model.dit):
                 # Sample random timesteps
@@ -354,10 +427,8 @@ class DiTTrainer:
                 # Process batch and compute loss
                 pred_dict = self.model.process_batch(batch, t)
                 loss = self.model.compute_loss(pred_dict)
-                
                 # Backward pass
                 self.accelerator.backward(loss)
-                
                 if self.accelerator.sync_gradients:
                     self.accelerator.clip_grad_norm_(
                         self.model.dit.parameters() if self.config.freeze_vae 
@@ -368,12 +439,10 @@ class DiTTrainer:
                 self.optimizer.step()
                 self.scheduler.step()
                 self.optimizer.zero_grad()
-            
             # Logging
             if step % self.config.log_every == 0:
                 # Get current learning rate
                 current_lr = self.scheduler.get_last_lr()[0]
-                
                 # Prepare log dict
                 log_dict = {
                     'loss': loss.item(),
@@ -420,11 +489,11 @@ class DiTTrainer:
 
 def main():
     # Get config from CLI arguments
-    config = TrainingConfig.from_args()
+    config = DiTTrainingConfig.from_args()
     
     # Initialize trainer
     trainer = DiTTrainer(config)
-    
+
     # Start/resume training
     trainer.train(resume_from=config.resume_from)
 
