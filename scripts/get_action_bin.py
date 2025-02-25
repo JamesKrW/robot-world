@@ -158,7 +158,7 @@ def main():
    dataloader = create_diffusion_dataloader(
        batch_size=32,
        num_workers=4,
-       data_dir="/home/kangrui/projects/world_model/droid-debug",
+       data_dir="../datasets/droid_100",
        split="train",
        dataset_name="droid_100"
    )
