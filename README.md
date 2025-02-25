@@ -1,4 +1,4 @@
-# Robot World
+# Open Robot World
 
 A world model training framework for robotics.
 
