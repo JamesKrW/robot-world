@@ -28,7 +28,7 @@ def create_droid_dataloader(
     dataset_names=["droid_100"],
     sample_weights=[1],
     data_dir="",
-    collect_fn=None
+    collect_fn=None,
 ):
     """Creates a PyTorch DataLoader for robot training data."""
     
@@ -66,7 +66,6 @@ def create_droid_dataloader(
             [make_dataset_from_rlds(**dataset_kwargs, train=train)[1] 
              for dataset_kwargs in dataset_kwargs_list]
         )
-    
     dataset = make_interleaved_dataset(
         dataset_kwargs_list,
         sample_weights,
@@ -92,18 +91,17 @@ def create_droid_dataloader(
         traj_transform_threads=traj_transform_threads,
         traj_read_threads=traj_read_threads,
     )
-    dataset_statistics = dataset.dataset_statistics
-    sample_weights = dataset.sample_weights
+    # dataset_statistics = dataset.dataset_statistics
+    # sample_weights = dataset.sample_weights
     dataset = dataset.map(robomimic_transform, num_parallel_calls=parallel_calls)
     dataset.dataset_statistics = dataset_statistics
     dataset.sample_weights = sample_weights
     pytorch_dataset = TorchRLDSDataset(dataset,train=train)
-    
     dataloader = DataLoader(
         pytorch_dataset,
         batch_size=batch_size,
         num_workers=num_workers,
-        collate_fn=collect_fn,  # Add custom collate function
+        collate_fn=collect_fn,
     )
     
     return dataloader

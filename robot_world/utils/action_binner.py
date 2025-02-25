@@ -85,10 +85,8 @@ class ActionBinner:
 
     def collect_statistics(self, dataloader) -> Tuple[torch.Tensor, torch.Tensor, List[torch.Tensor]]:
         all_actions = []
-        
         for batch in tqdm(dataloader):
             all_actions.append(batch["delta_action"])
-            
         all_actions = torch.cat(all_actions, dim=0).to(self.device)
         
         min_vals = all_actions.min(dim=0)[0]
